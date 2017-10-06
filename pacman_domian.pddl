@@ -1,9 +1,56 @@
 (define (domain pacman)
-	(:requirements :typing)
-	(:predicates (at [?x ?y])
-				 (wall [?x ?y])
-				 (pacman [?x ?y])
-				 (abs [?x ?y ?eq]))
+	(:requirements :typing :equality)
+	(:predicates (at ?x ?y)
+				 (wall ?x ?y)
+				 (pacman ?x ?y)
+				 (scared_ghost ?x ?y)
+				 (normal_ghost ?x ?y))
+	(:action up
+		:parameters (?x ?y)
+		:precondition (and (at ?x ?y)
+						   (not (wall ?x (+ ?y 1)))
+						   (not (normal_ghost ?x (+ ?y 1))))
+		:effect (and (at ?x (+ ?y 1))
+					 (not (at ?x (+ ?y 1)))
+					 (not (food ?x (+ ?y 1)))
+					 (not (scared_ghost ?x (+ ?y 1)))
+	)
+
+	(:action down
+		:parameters (?x ?y)
+		:precondition (and (at ?x ?y)
+						   (not (wall ?x (- ?y 1)))
+						   (not (normal_ghost ?x (- ?y 1))))
+		:effect (and (at ?x (- ?y 1))
+					 (not (at ?x (- ?y 1)))
+					 (not (food ?x (- ?y 1)))
+					 (not (scared_ghost ?x (- ?y 1)))
+	)
+
+	(:action right
+		:parameters (?x ?y)
+		:precondition (and (at ?x ?y)
+						   (not (wall (+ ?x 1) ?y))
+						   (not (normal_ghost (+ ?x 1) ?y)))
+		:effect (and (at (+ ?x 1) ?y)
+					 (not (at (+ ?x 1) ?y))
+					 (not (food (+ ?x 1) ?y))
+					 (not (scared_ghost (+ ?x 1) ?y)))
+	)
+
+	(:action left
+		:parameters (?x ?y)
+		:precondition (and (at ?x ?y)
+						   (not (wall (- ?x 1) ?y))
+						   (not (normal_ghost (- ?x 1) ?y)))
+		:effect (and (at (- ?x 1) ?y)
+					 (not (at (- ?x 1) ?y))
+					 (not (food (- ?x 1) ?y))
+					 (not (scared_ghost (- ?x 1) ?y)))
+	)
+
+
+
 	(:action move
 		:parameters (?c_x ?c_y ?n_x ?n_y)
 		:precondition (and (at ?c_x ?c_y)
