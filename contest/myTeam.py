@@ -101,6 +101,13 @@ class OffAgent(CaptureAgent):
     on initialization time, please take a look at
     CaptureAgent.registerInitialState in captureAgents.py.
     '''
+    self.weights = {}
+    self.weights['distToFood'] = -1
+    self.weights['distToGhost'] = 10
+    self.weights['distToHome'] = -1
+    self.weights['numCarrying'] = -1
+    self.weights['foodLeft'] = 1
+    self.weights['gameScore'] = 1
     self.start = gameState.getAgentPosition(self.index)
     CaptureAgent.registerInitialState(self, gameState)
 
@@ -114,18 +121,13 @@ class OffAgent(CaptureAgent):
     Picks among actions randomly.
     """
     actions = gameState.getLegalActions(self.index)
+    actions.remove('Stop')
     myState = gameState.getAgentState(self.index)
     myPos = myState.getPosition()
 
     ## find closest food
     foods = self.getFood(gameState).asList()
-    closest_food = None
-    dist_food = 0
-    for food in foods:
-      thisDist = self.getMazeDistance(myPos, food)
-      if closest_food == None or thisDist < dist_food:
-        closest_food = food
-        dist_food = thisDist
+    dist_food, closest_food = min([(self.getMazeDistance(myPos, food), food) for food in foods])
 
     if myState.numCarrying != 0:
       if dist_food <= 2: return self.decideMove(gameState, actions, closest_food)
@@ -133,32 +135,20 @@ class OffAgent(CaptureAgent):
 
 
     opponents = self.getOpponents(gameState)
-    closer_opponent = None
-    pacman_opponent = False
-    dist_opponent = 0
-    for opponent in opponents:
-      opponentState = gameState.getAgentState(opponent)
-      opponentPosition = opponentState.getPosition()
-      opponentPacman = opponentState.isPacman
-      if opponentPosition == None: continue
-      thisDist = self.getMazeDistance(myPos, opponentPosition)
-      if closer_opponent == None or thisDist < dist_opponent:
-        closer_opponent = opponentPosition
-        pacman_opponent = opponentPacman
-        dist_opponent = thisDist
+    oppStates = [gameState.getAgentState(opponent) for opponent in opponents]
+    oppPoses = [(state, state.getPosition()) for state in oppStates]
+    visibleOpponents = [(self.getMazeDistance(myPos, pos), pos, state.isPacman) for state, pos in oppPoses if pos != None]
+    d_opp, c_opp, p_opp = (None, None, None) if visibleOpponents == [] else min(visibleOpponents)
+    
     # evade ghost if required
-    if closer_opponent != None:
-      if not pacman_opponent:
-        return self.decideMove(gameState, actions, closer_opponent, False)
-      elif pacman_opponent and not myState.isPacman: # try to get nearest pacman
-        return self.decideMove(gameState, actions, closer_opponent)
+    if c_opp != None:
+      if not p_opp:
+        return self.decideMove(gameState, actions, c_opp, False)
+      elif p_opp and not myState.isPacman: # try to get nearest pacman
+        return self.decideMove(gameState, actions, c_opp)
 
     return self.decideMove(gameState, actions, closest_food)
 
-
-    '''
-    You should change this in your own agent.
-    '''
 
   def decideMove(self, gameState, actions, target, approach=True):
     suitableMove = None
@@ -174,6 +164,13 @@ class OffAgent(CaptureAgent):
         suitableMove = act
         distance = thisDist
     return suitableMove
+
+  def getFeatures(self, gameState, action):
+    myState = gameState.getAgentState(self.index)
+    
+
+    features = {}
+    features['numCarrying'] = self.numCarrying
 
 class DefAgent(CaptureAgent):
 
@@ -249,7 +246,7 @@ class DefAgent(CaptureAgent):
     """
     successor = gameState.generateSuccessor(self.index, action)
     pos = successor.getAgentState(self.index).getPosition()
-    if pos != util.nearestPoint(pos):
+    if pos != nearestPoint(pos):
       # Only half a grid position was covered
       return successor.generateSuccessor(self.index, action)
     else:
@@ -278,13 +275,21 @@ class DefAgent(CaptureAgent):
     enemies = [successor.getAgentState(i) for i in self.getOpponents(successor)] 
     invaders = [a for a in enemies if a.isPacman and a.getPosition() != None]
     features['numInvaders'] = len(invaders)
-    if len(invaders) > 0:
-      dists = [self.getMazeDistance(myPos, a.getPosition()) for a in invaders]
-      features['targetDistance'] = min(dists)
+    if len(invaders) > 0: 
+        dists = [self.getMazeDistance(myPos, a.getPosition()) for a in invaders]
+        disToCloestInvader = min(dists)
+        features['targetDistance'] = disToCloestInvader
+        #game reconition techniques;
+        if ((len(invaders)==1) and (disToCloestInvader > 5) and (a.getPosition() != None for a in invaders)):
+          invaderLoc = invaders[0].getPosition()
+          foods = self.getFoodYouAreDefending(gameState).asList()
+          invaderToFood, targetLoc = min([(self.getMazeDistance(invaderLoc, foodLoc), foodLoc) for foodLoc in foods])
+          disToInvaderTarget = self.getMazeDistance(targetLoc, myPos)
+          features['targetDistance'] = disToInvaderTarget
     else:
       walls = gameState.getWalls()
       disToMiddle = self.getMazeDistance(myPos, (walls.width/2,walls.height/2))
-      features['targetDistance'] = disToMiddle
+      features['targetDistance'] = disToMiddle*0
 
     if action == Directions.STOP: features['stop'] = 1
     rev = Directions.REVERSE[gameState.getAgentState(self.index).configuration.direction]
@@ -305,4 +310,3 @@ class DefAgent(CaptureAgent):
         """
         isScared = bool(gameState.data.agentStates[index].scaredTimer)
         return isScared
-
