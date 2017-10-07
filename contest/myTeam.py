@@ -14,6 +14,7 @@
 
 from captureAgents import CaptureAgent
 import random, time, util
+from util import nearestPoint
 from game import Directions
 import game
 
@@ -22,7 +23,7 @@ import game
 #################
 
 def createTeam(firstIndex, secondIndex, isRed,
-               first = 'DefensiveAgent', second = 'DefensiveAgent'):
+               first = 'OffAgent', second = 'DefAgent'):
   """
   This function should return a list of two agents that will form the
   team, initialized using firstIndex and secondIndex as their agent
@@ -45,7 +46,36 @@ def createTeam(firstIndex, secondIndex, isRed,
 # Agents #
 ##########
 
-class DefensiveAgent(CaptureAgent):
+class EvaluationBasedAgent(CaptureAgent):
+  def getSuccessor(self, gameState, action):
+    """
+    Finds the next successor which is a grid position (location tuple).
+    """
+    successor = gameState.generateSuccessor(self.index, action)
+    pos = successor.getAgentState(self.index).getPosition()
+    if pos != nearestPoint(pos):
+      return successor.generateSuccessor(self.index, action)
+    else:
+      return successor
+
+  def evaluate(self, gameState, action):
+    """
+    Computes a linear combination of features and feature weights
+    """
+    features = self.getFeatures(gameState, action)
+    weights = self.getWeights(gameState, action)
+    return features * weights
+
+  def getFeatures(self, gameState, action):
+    features = util.Counter()
+    successor = self.getSuccessor(gameState, action)
+    features['successorScore'] = self.getScore(successor)
+    return features
+
+  def getWeights(self, gameState, action):
+    return {'successorScore': 1.0}
+
+class OffAgent(CaptureAgent):
   """
   A Dummy agent to serve as an example of the necessary agent structure.
   You should look at baselineTeam.py for more details about how to
@@ -72,7 +102,6 @@ class DefensiveAgent(CaptureAgent):
     CaptureAgent.registerInitialState in captureAgents.py.
     '''
     self.start = gameState.getAgentPosition(self.index)
-    self.first_move = True
     CaptureAgent.registerInitialState(self, gameState)
 
     '''
@@ -99,8 +128,9 @@ class DefensiveAgent(CaptureAgent):
         dist_food = thisDist
 
     if myState.numCarrying != 0:
-      if dist_food <= 2: pass
+      if dist_food <= 2: return self.decideMove(gameState, actions, closest_food)
       else: return self.decideMove(gameState, actions, self.start)
+
 
     opponents = self.getOpponents(gameState)
     closer_opponent = None
@@ -118,7 +148,7 @@ class DefensiveAgent(CaptureAgent):
         dist_opponent = thisDist
     # evade ghost if required
     if closer_opponent != None:
-      if not pacman_opponent and myState.isPacman:
+      if not pacman_opponent:
         return self.decideMove(gameState, actions, closer_opponent, False)
       elif pacman_opponent and not myState.isPacman: # try to get nearest pacman
         return self.decideMove(gameState, actions, closer_opponent)
@@ -144,4 +174,135 @@ class DefensiveAgent(CaptureAgent):
         suitableMove = act
         distance = thisDist
     return suitableMove
+
+class DefAgent(CaptureAgent):
+
+  def registerInitialState(self, gameState):
+    """
+    This method handles the initial setup of the
+    agent to populate useful fields (such as what team
+    we're on).
+
+    A distanceCalculator instance caches the maze distances
+    between each pair of positions, so your agents can use:
+    self.distancer.getDistance(p1, p2)
+
+    IMPORTANT: This method may run for at most 15 seconds.
+    """
+
+    '''
+    Make sure you do not delete the following line. If you would like to
+    use Manhattan distances instead of maze distances in order to save
+    on initialization time, please take a look at
+    CaptureAgent.registerInitialState in captureAgents.py.
+    '''
+    self.start = gameState.getAgentPosition(self.index)
+    
+    CaptureAgent.registerInitialState(self, gameState)
+
+    '''
+    Your initialization code goes here, if you need any.
+    '''
+
+  """def getFeatures(self, gameState, action):
+
+
+
+  def fetWeights(self, gameState, action):
+  """
+
+
+  def chooseAction(self, gameState):
+    """
+    Picks among the actions with the highest Q(s,a).
+    """
+    actions = gameState.getLegalActions(self.index)
+
+    # You can profile your evaluation time by uncommenting these lines
+    #start = time.time()
+    values = [self.evaluate(gameState, a) for a in actions]
+    #print 'eval time for agent %d: %.4f' % (self.index, time.time() - start)
+
+    maxValue = max(values)
+    bestActions = [a for a, v in zip(actions, values) if v == maxValue]
+
+
+
+    foodLeft = len(self.getFood(gameState).asList())
+
+    if foodLeft <= 2:
+      bestDist = 9999
+      for action in actions:
+        successor = self.getSuccessor(gameState, action)
+        pos2 = successor.getAgentPosition(self.index)
+        dist = self.getMazeDistance(self.start,pos2)
+        if dist < bestDist:
+          bestAction = action
+          bestDist = dist
+      return bestAction
+
+    return random.choice(bestActions)
+
+  def getSuccessor(self, gameState, action):
+    """
+    Finds the next successor which is a grid position (location tuple).
+    """
+    successor = gameState.generateSuccessor(self.index, action)
+    pos = successor.getAgentState(self.index).getPosition()
+    if pos != util.nearestPoint(pos):
+      # Only half a grid position was covered
+      return successor.generateSuccessor(self.index, action)
+    else:
+      return successor
+
+  def evaluate(self, gameState, action):
+    """
+    Computes a linear combination of features and feature weights
+    """
+    features = self.getFeatures(gameState, action)
+    weights = self.getWeights(gameState, action)
+    return features * weights
+
+  def getFeatures(self, gameState, action):
+    features = util.Counter()
+    successor = self.getSuccessor(gameState, action)
+
+    myState = successor.getAgentState(self.index)
+    myPos = myState.getPosition()
+
+    # Computes whether we're on defense (1) or offense (0)
+    features['onDefense'] = 1
+    if myState.isPacman: features['onDefense'] = 0
+
+    # Computes distance to invaders we can see
+    enemies = [successor.getAgentState(i) for i in self.getOpponents(successor)] 
+    invaders = [a for a in enemies if a.isPacman and a.getPosition() != None]
+    features['numInvaders'] = len(invaders)
+    if len(invaders) > 0:
+      dists = [self.getMazeDistance(myPos, a.getPosition()) for a in invaders]
+      features['targetDistance'] = min(dists)
+    else:
+      walls = gameState.getWalls()
+      disToMiddle = self.getMazeDistance(myPos, (walls.width/2,walls.height/2))
+      features['targetDistance'] = disToMiddle
+
+    if action == Directions.STOP: features['stop'] = 1
+    rev = Directions.REVERSE[gameState.getAgentState(self.index).configuration.direction]
+    if action == rev: features['reverse'] = 1
+
+    return features
+
+  def getWeights(self, gameState, action):
+
+    if self.isScared(gameState, self.index):
+      return {'numInvaders': -1000, 'onDefense': 100, 'targetDistance': -0.2*gameState.getAgentState(self.index).scaredTimer, 'stop': -10, 'reverse': -1}
+
+    return {'numInvaders': -1000, 'onDefense': 100, 'targetDistance': -10, 'stop': -100, 'reverse': -2}
+
+  def isScared(self, gameState, index):
+        """
+        Says whether or not the given agent is scared
+        """
+        isScared = bool(gameState.data.agentStates[index].scaredTimer)
+        return isScared
 
