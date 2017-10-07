@@ -123,7 +123,6 @@ class DefensiveAgent(CaptureAgent):
       elif pacman_opponent and not myState.isPacman: # try to get nearest pacman
         return self.decideMove(gameState, actions, closer_opponent)
 
-
     return self.decideMove(gameState, actions, closest_food)
 
 
@@ -145,3 +144,4 @@ class DefensiveAgent(CaptureAgent):
         suitableMove = act
         distance = thisDist
     return suitableMove
+
