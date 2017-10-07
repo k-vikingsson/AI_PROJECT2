@@ -23,7 +23,7 @@ import time
 #################
 
 def createTeam(firstIndex, secondIndex, isRed,
-               first = 'OffensiveAgent', second = 'OffensiveAgent'):
+               first = 'DefensiveAgent', second = 'DefensiveAgent'):
   """
   This function should return a list of two agents that will form the
   team, initialized using firstIndex and secondIndex as their agent
@@ -46,7 +46,7 @@ def createTeam(firstIndex, secondIndex, isRed,
 # Agents #
 ##########
 
-class OffensiveAgent(CaptureAgent):
+class DefensiveAgent(CaptureAgent):
   """
   A Dummy agent to serve as an example of the necessary agent structure.
   You should look at baselineTeam.py for more details about how to
@@ -73,147 +73,92 @@ class OffensiveAgent(CaptureAgent):
     CaptureAgent.registerInitialState in captureAgents.py.
     '''
     self.start = gameState.getAgentPosition(self.index)
-    self.firstMove = True
-    self.targetFoods = self.getFood(gameState)
-    # Q values
-    self.QValue = util.Counter()
+    self.first_move = True
     CaptureAgent.registerInitialState(self, gameState)
-    print self.targetFoods
-    print ''
-
-
-    ### LEARNING PARAMETERS ###
-    self.epsilon = 0.2
 
     '''
     Your initialization code goes here, if you need any.
     '''
-  ## reward function, tunable
-  def reward(self, action, gameState):
-    # agent current state
-    mystate = gameState.getAgentState(self.index)
-    # my next state
-    nextGameState = gameState.generateSuccessor(self.index)
-    myNextState = nextGameState.getAgentState(self.index)
-    # food list
-    foods = self.getFood(gameState).asList()
-    nextFoods = self.getFood(nextGameState).asList()
-
-    ## case: eat food
-    if len(foods) - len(nextFoods) == 1:
-      return 1/mystate.numCarrying
-    ## case: lose foods
-    if myNextState.configuration == mystate.start:
-      return -10 * mystate.numCarrying
-    ## case: return foods
-    if mystate.isPacman and not myNextState.isPacman:
-      return 10 * mystate.numCarrying
-
-    return 0
-
-  def learn(self, gameState):
-    startTime = time.time()
-    while time.time() - startTime <= 10:
-      runEpisode(gameState)
-
-  def runEpisode(gameState):
-    
-
-
-  def getQValue(self, gameState, action):
-    return self.QValue[(gameState, action)]
-
-  def computeValueFromQValues(self, gameState):
-    maxValue = 0
-    actions = gameState.getLegalActions(self.index)
-    if len(actions) == 0: return 0
-    val = -999
-    for action in actions:
-      val = max(val, self.getQValue(gameState, action))
-    return val
-
-  def computeActionFromQValues(self, gameState):
-    bestVal = bestAction = None
-    actions = gameState.getLegalActions(self.index)
-
-    for action in actions:
-      curVal = self.getQValue(gameState,action)
-      if bestVal is None or bestVal < curVal:
-        bestVal = curVal
-        bestAction = action
-
-    return bestAction
-
-  def getAction(self, gameState):
-    legalActions = gameState.getLegalActions(self.index)
-    action = None
-    "*** YOUR CODE HERE ***"
-    explore = util.flipCoin(self.epsilon)
-    if explore:
-      return random.choice(legalActions)
-    else:
-      return self.computeActionFromQValues(gameState)
-    return action
-
-  def update(self, state, action, nextState, reward):
-    self.QValue[(state,action)] = (1-self.alpha)*self.getQValue(state,action)+ self.alpha*(reward+self.discount*self.getValue(nextState))
-
-
 
 
   def chooseAction(self, gameState):
+    """
+    Picks among actions randomly.
+    """
     actions = gameState.getLegalActions(self.index)
+    myState = gameState.getAgentState(self.index)
+    myPos = myState.getPosition()
+
+    ## find closest food
+    foods = self.getFood(gameState).asList()
+    closest_food = None
+    dist_food = 0
+    for food in foods:
+      thisDist = self.getMazeDistance(myPos, food)
+      if closest_food == None or thisDist < dist_food:
+        closest_food = food
+        dist_food = thisDist
+
+    if myState.numCarrying != 0:
+      if dist_food <= 2: pass
+      else: return self.returnHome(gameState, actions)
+
+    # evade ghost if required
+    if myState.isPacman:
+      opponents = self.getOpponents(gameState)
+      closer_opponent = None
+      dist_opponent = 0
+      for opponent in opponents:
+        opponentState = gameState.getAgentState(opponent)
+        opponentPosition = opponentState.getPosition()
+        opponentGhost = not opponentState.isPacman
+        if opponentPosition != None and opponentGhost:
+          thisDist = self.getMazeDistance(myPos, opponentPosition)
+          if closer_opponent == None or thisDist < dist_opponent:
+            closer_opponent = opponentPosition
+            dist_opponent = thisDist
+      if closer_opponent != None: return self.evadeGhost(gameState, closer_opponent, actions)
+
+
+    closest_act = None
+    dist_act = 0
+    for act in actions:
+      successor = gameState.generateSuccessor(self.index, act)
+      myNextState = successor.getAgentState(self.index)
+      myNextPos = myNextState.getPosition()
+      thisDist = self.getMazeDistance(myNextPos, closest_food)
+      if closest_act == None or thisDist < dist_act:
+        closest_act = act
+        dist_act = thisDist
+
+    return closest_act
+
 
     '''
     You should change this in your own agent.
     '''
+  def returnHome(self, gameState, actions):
+    closest_act = None
+    dist_act = 0
+    for act in actions:
+      successor = gameState.generateSuccessor(self.index, act)
+      myNextState = successor.getAgentState(self.index)
+      myNextPos = myNextState.getPosition()
+      thisDist = self.getMazeDistance(myNextPos, self.start)
+      if closest_act == None or thisDist < dist_act:
+        closest_act = act
+        dist_act = thisDist
+    return closest_act
 
-    return random.choice(actions)
-
-
-# class DefensiveAgent(CaptureAgent):
-#   """
-#   A Dummy agent to serve as an example of the necessary agent structure.
-#   You should look at baselineTeam.py for more details about how to
-#   create an agent as this is the bare minimum.
-#   """
-
-#   def registerInitialState(self, gameState):
-#     """
-#     This method handles the initial setup of the
-#     agent to populate useful fields (such as what team
-#     we're on).
-
-#     A distanceCalculator instance caches the maze distances
-#     between each pair of positions, so your agents can use:
-#     self.distancer.getDistance(p1, p2)
-
-#     IMPORTANT: This method may run for at most 15 seconds.
-#     """
-
-#     '''
-#     Make sure you do not delete the following line. If you would like to
-#     use Manhattan distances instead of maze distances in order to save
-#     on initialization time, please take a look at
-#     CaptureAgent.registerInitialState in captureAgents.py.
-#     '''
-#     self.start = gameState.getPacmanPosition()
-#     self.first_move = True
-#     CaptureAgent.registerInitialState(self, gameState)
-
-#     '''
-#     Your initialization code goes here, if you need any.
-#     '''
-
-
-#   def chooseAction(self, gameState):
-#     """
-#     Picks among actions randomly.
-#     """
-#     actions = gameState.getLegalActions(self.index)
-
-#     '''
-#     You should change this in your own agent.
-#     '''
-
-#     return random.choice(actions)
+  def evadeGhost(self, gameState, opponent, actions):
+    furthest = None
+    dist = 0
+    for act in actions:
+      successor = gameState.generateSuccessor(self.index, act)
+      myNextState = successor.getAgentState(self.index)
+      myNextPos = myNextState.getPosition()
+      thisDist = self.getMazeDistance(myNextPos, opponent)
+      if furthest == None or thisDist > dist:
+        furthest = act
+        dist = thisDist
+    return furthest
