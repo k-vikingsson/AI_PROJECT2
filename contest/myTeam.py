@@ -16,7 +16,6 @@ from captureAgents import CaptureAgent
 import random, time, util
 from game import Directions
 import game
-import time
 
 #################
 # Team creation #
@@ -104,34 +103,24 @@ class DefensiveAgent(CaptureAgent):
       else: return self.decideMove(gameState, actions, self.start)
 
     opponents = self.getOpponents(gameState)
+    closer_opponent = None
+    pacman_opponent = False
+    dist_opponent = 0
+    for opponent in opponents:
+      opponentState = gameState.getAgentState(opponent)
+      opponentPosition = opponentState.getPosition()
+      opponentPacman = opponentState.isPacman
+      if opponentPosition == None: continue
+      thisDist = self.getMazeDistance(myPos, opponentPosition)
+      if closer_opponent == None or thisDist < dist_opponent:
+        closer_opponent = opponentPosition
+        pacman_opponent = opponentPacman
+        dist_opponent = thisDist
     # evade ghost if required
-    if myState.isPacman:
-      closer_opponent = None
-      dist_opponent = 0
-      for opponent in opponents:
-        opponentState = gameState.getAgentState(opponent)
-        opponentPosition = opponentState.getPosition()
-        opponentGhost = not opponentState.isPacman
-        if opponentPosition != None and opponentGhost:
-          thisDist = self.getMazeDistance(myPos, opponentPosition)
-          if closer_opponent == None or thisDist < dist_opponent:
-            closer_opponent = opponentPosition
-            dist_opponent = thisDist
-      if closer_opponent != None:
+    if closer_opponent != None:
+      if not pacman_opponent and myState.isPacman:
         return self.decideMove(gameState, actions, closer_opponent, False)
-    else: # try to get nearest pacman
-      closer_opponent = None
-      dist_opponent = 0
-      for opponent in opponents:
-        opponentState = gameState.getAgentState(opponent)
-        opponentPosition = opponentState.getPosition()
-        opponentPacman = opponentState.isPacman
-        if opponentPosition != None and opponentPacman:
-          thisDist = self.getMazeDistance(myPos, opponentPosition)
-          if closer_opponent == None or thisDist > dist_opponent:
-            closer_opponent = opponentPosition
-            dist_opponent = thisDist
-      if closer_opponent != None:
+      elif pacman_opponent and not myState.isPacman: # try to get nearest pacman
         return self.decideMove(gameState, actions, closer_opponent)
 
 
