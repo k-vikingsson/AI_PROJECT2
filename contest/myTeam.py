@@ -46,35 +46,6 @@ def createTeam(firstIndex, secondIndex, isRed,
 # Agents #
 ##########
 
-class EvaluationBasedAgent(CaptureAgent):
-  def getSuccessor(self, gameState, action):
-    """
-    Finds the next successor which is a grid position (location tuple).
-    """
-    successor = gameState.generateSuccessor(self.index, action)
-    pos = successor.getAgentState(self.index).getPosition()
-    if pos != nearestPoint(pos):
-      return successor.generateSuccessor(self.index, action)
-    else:
-      return successor
-
-  def evaluate(self, gameState, action):
-    """
-    Computes a linear combination of features and feature weights
-    """
-    features = self.getFeatures(gameState, action)
-    weights = self.getWeights(gameState, action)
-    return features * weights
-
-  def getFeatures(self, gameState, action):
-    features = util.Counter()
-    successor = self.getSuccessor(gameState, action)
-    features['successorScore'] = self.getScore(successor)
-    return features
-
-  def getWeights(self, gameState, action):
-    return {'successorScore': 1.0}
-
 class OffAgent(CaptureAgent):
   """
   A Dummy agent to serve as an example of the necessary agent structure.
@@ -167,7 +138,7 @@ class OffAgent(CaptureAgent):
 
   def getFeatures(self, gameState, action):
     myState = gameState.getAgentState(self.index)
-    
+
 
     features = {}
     features['numCarrying'] = self.numCarrying
