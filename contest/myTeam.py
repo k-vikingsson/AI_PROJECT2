@@ -101,11 +101,11 @@ class DefensiveAgent(CaptureAgent):
 
     if myState.numCarrying != 0:
       if dist_food <= 2: pass
-      else: return self.returnHome(gameState, actions)
+      else: return self.decideMove(gameState, actions, self.start)
 
+    opponents = self.getOpponents(gameState)
     # evade ghost if required
     if myState.isPacman:
-      opponents = self.getOpponents(gameState)
       closer_opponent = None
       dist_opponent = 0
       for opponent in opponents:
@@ -117,48 +117,42 @@ class DefensiveAgent(CaptureAgent):
           if closer_opponent == None or thisDist < dist_opponent:
             closer_opponent = opponentPosition
             dist_opponent = thisDist
-      if closer_opponent != None: return self.evadeGhost(gameState, closer_opponent, actions)
+      if closer_opponent != None:
+        return self.decideMove(gameState, actions, closer_opponent, False)
+    else: # try to get nearest pacman
+      closer_opponent = None
+      dist_opponent = 0
+      for opponent in opponents:
+        opponentState = gameState.getAgentState(opponent)
+        opponentPosition = opponentState.getPosition()
+        opponentPacman = opponentState.isPacman
+        if opponentPosition != None and opponentPacman:
+          thisDist = self.getMazeDistance(myPos, opponentPosition)
+          if closer_opponent == None or thisDist > dist_opponent:
+            closer_opponent = opponentPosition
+            dist_opponent = thisDist
+      if closer_opponent != None:
+        return self.decideMove(gameState, actions, closer_opponent)
 
 
-    closest_act = None
-    dist_act = 0
-    for act in actions:
-      successor = gameState.generateSuccessor(self.index, act)
-      myNextState = successor.getAgentState(self.index)
-      myNextPos = myNextState.getPosition()
-      thisDist = self.getMazeDistance(myNextPos, closest_food)
-      if closest_act == None or thisDist < dist_act:
-        closest_act = act
-        dist_act = thisDist
-
-    return closest_act
+    return self.decideMove(gameState, actions, closest_food)
 
 
     '''
     You should change this in your own agent.
     '''
-  def returnHome(self, gameState, actions):
-    closest_act = None
-    dist_act = 0
-    for act in actions:
-      successor = gameState.generateSuccessor(self.index, act)
-      myNextState = successor.getAgentState(self.index)
-      myNextPos = myNextState.getPosition()
-      thisDist = self.getMazeDistance(myNextPos, self.start)
-      if closest_act == None or thisDist < dist_act:
-        closest_act = act
-        dist_act = thisDist
-    return closest_act
 
-  def evadeGhost(self, gameState, opponent, actions):
-    furthest = None
-    dist = 0
+  def decideMove(self, gameState, actions, target, approach=True):
+    suitableMove = None
+    distance = 0
     for act in actions:
       successor = gameState.generateSuccessor(self.index, act)
       myNextState = successor.getAgentState(self.index)
       myNextPos = myNextState.getPosition()
-      thisDist = self.getMazeDistance(myNextPos, opponent)
-      if furthest == None or thisDist > dist:
-        furthest = act
-        dist = thisDist
-    return furthest
+      thisDist = self.getMazeDistance(myNextPos, target)
+      if approach: moreSuitable = thisDist < distance
+      else: moreSuitable = thisDist > distance
+      if suitableMove == None or moreSuitable:
+        suitableMove = act
+        distance = thisDist
+    return suitableMove
