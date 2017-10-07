@@ -72,13 +72,7 @@ class OffAgent(CaptureAgent):
     on initialization time, please take a look at
     CaptureAgent.registerInitialState in captureAgents.py.
     '''
-    self.weights = {}
-    self.weights['distToFood'] = -1
-    self.weights['distToGhost'] = 10
-    self.weights['distToHome'] = -1
-    self.weights['numCarrying'] = -1
-    self.weights['foodLeft'] = 1
-    self.weights['gameScore'] = 1
+    
     self.start = gameState.getAgentPosition(self.index)
     CaptureAgent.registerInitialState(self, gameState)
 
@@ -93,33 +87,33 @@ class OffAgent(CaptureAgent):
     """
     actions = gameState.getLegalActions(self.index)
     actions.remove('Stop')
-    myState = gameState.getAgentState(self.index)
-    myPos = myState.getPosition()
 
-    ## find closest food
-    foods = self.getFood(gameState).asList()
-    dist_food, closest_food = min([(self.getMazeDistance(myPos, food), food) for food in foods])
-
-    if myState.numCarrying != 0:
-      if dist_food <= 2: return self.decideMove(gameState, actions, closest_food)
-      else: return self.decideMove(gameState, actions, self.start)
-
-
-    opponents = self.getOpponents(gameState)
-    oppStates = [gameState.getAgentState(opponent) for opponent in opponents]
-    oppPoses = [(state, state.getPosition()) for state in oppStates]
-    visibleOpponents = [(self.getMazeDistance(myPos, pos), pos, state.isPacman) for state, pos in oppPoses if pos != None]
-    d_opp, c_opp, p_opp = (None, None, None) if visibleOpponents == [] else min(visibleOpponents)
+    self
     
-    # evade ghost if required
-    if c_opp != None:
-      if not p_opp:
-        return self.decideMove(gameState, actions, c_opp, False)
-      elif p_opp and not myState.isPacman: # try to get nearest pacman
-        return self.decideMove(gameState, actions, c_opp)
 
-    return self.decideMove(gameState, actions, closest_food)
+    # ## find closest food
+    # foods = self.getFood(gameState).asList()
+    # dist_food, closest_food = min([(self.getMazeDistance(myPos, food), food) for food in foods])
 
+    # if myState.numCarrying != 0:
+    #   if dist_food <= 2: return self.decideMove(gameState, actions, closest_food)
+    #   else: return self.decideMove(gameState, actions, self.start)
+
+
+    
+    # # evade ghost if required
+    # if c_opp != None:
+    #   if not p_opp:
+    #     return self.decideMove(gameState, actions, c_opp, False)
+    #   elif p_opp and not myState.isPacman: # try to get nearest pacman
+    #     return self.decideMove(gameState, actions, c_opp)
+
+    # return self.decideMove(gameState, actions, closest_food)
+    return max([(self.evaluate(gameState, act), act) for act in actions])[1]
+
+  def evaluate(self, gameState, action):
+    features = self.getFeatures(gameState, action)
+    return features * weights
 
   def decideMove(self, gameState, actions, target, approach=True):
     suitableMove = None
@@ -138,10 +132,55 @@ class OffAgent(CaptureAgent):
 
   def getFeatures(self, gameState, action):
     myState = gameState.getAgentState(self.index)
+    myPos = myState.getPosition()
+    successor = gameState.generateSuccessor(self.index, action)
+    myNextState = successor.getAgentState(self.index)
+    myNextPos = myNextState.getPosition()
+
+    foods = self.getFood(successor).asList()
+    dist_food, closest_food = min([(self.getMazeDistance(myNextPos, food), food) for food in foods])
+    opponents = self.getOpponents(successor)
+    oppStates = [successor.getAgentState(opponent) for opponent in opponents]
+    oppPoses = [(state, state.getPosition()) for state in oppStates]
+    visibleOpponents = [(self.getMazeDistance(myPos, pos), pos, state.isPacman) for state, pos in oppPoses if pos != None]
+    d_opp, c_opp, p_opp = (0, None, None) if visibleOpponents == [] else min(visibleOpponents)
+
+    if len(gameState.getLegalActions(self.index)) == 2: deadend = 1
+    else: deadend = 0
+
+    reverse = Directions.REVERSE[gameState.getAgentState(self.index).configuration.direction]
+
+    features = util.Counter()
+    features['numCarrying'] = myNextState.numCarrying
+    features['distToFood'] = dist_food
+    features['distToGhost'] = 0 if not p_opp else d_opp
+    features['distToHome'] = self.getMazeDistance(myNextPos, self.start)
+    features['foodLeft'] = len(foods)
+    features['gameScore'] = self.getScore(successor)
+    features['deadend'] = deadend * (d_opp + 1)
+    if action == reverse: features['reverse'] = 1
+    else: features['reverse'] = 0
+
+    return features
+
+  def getWeights(self, gameState, action):
+    weights = util.Counter()
 
 
-    features = {}
-    features['numCarrying'] = self.numCarrying
+
+
+
+
+
+    weights['distToFood'] = -50
+    weights['distToGhost'] = 100
+    weights['distToHome'] = -0.01
+    weights['numCarrying'] = -10
+    weights['foodLeft'] = -200
+    weights['gameScore'] = 1000
+    weights['deadend'] = -100
+    weights['reverse'] = -2
+
 
 class DefAgent(CaptureAgent):
 
