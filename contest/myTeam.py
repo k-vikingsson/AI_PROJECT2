@@ -109,15 +109,18 @@ class OffAgent(CaptureAgent):
     oppPoses = [(state, state.getPosition()) for state in oppStates]
     visibleOpponents = [(self.getMazeDistance(myPos, pos), pos, state.isPacman, state.scaredTimer) for state, pos in oppPoses if pos != None]
     d_opp, c_opp, p_opp, s_opp = (9999, None, None, None) if visibleOpponents == [] else min(visibleOpponents)
-    print [opp[1] for opp in visibleOpponents if opp[3] == 0]
+    # print [opp[1] for opp in visibleOpponents if opp[3] == 0]
     ghosts = [] if visibleOpponents == [] else [opp[1] for opp in visibleOpponents if opp[3] == 0]
     # print ghosts, visibleOpponents
     dist_ghosts = [self.getMazeDistance(myPos, ghost) for ghost in ghosts]
     # print d_opp, c_opp, p_opp
     
-    if capss != [] or ghosts != []: (dist_food, closest_food) = self.chooseTarget(myPos, capss, ghosts)
+    if capss != [] and ghosts != []: (dist_food, closest_food) = self.chooseTarget(myPos, capss, ghosts)
     elif foods != []: (dist_food, closest_food) = self.chooseTarget(myPos, foods, ghosts)
     else: return self.decideMove(gameState, actions, self.start)
+
+    if closest_food == None:
+      print "None", foods, ghosts, dist_food
 
     # print dist_food, closest_food
 
@@ -131,6 +134,8 @@ class OffAgent(CaptureAgent):
       # elif p_opp and not myState.isPacman: # try to get nearest pacman
       #   return self.decideMove(gameState, actions, c_opp)
 
+    # if gameState.data.timeleft/4 <= self.getMazeDistance(myPos, self.start)/2:
+    #   return self.decideMove(gameState, actions, self.start)
     return self.decideMove(gameState, actions, closest_food)
 
 
