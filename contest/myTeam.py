@@ -96,30 +96,54 @@ class OffAgent(CaptureAgent):
     myState = gameState.getAgentState(self.index)
     myPos = myState.getPosition()
 
-    ## find closest food
+    # find closest food
+    capss = self.getCapsules(gameState)
+    # print capss
+    # dist_caps, closest_caps = 0, None if capss == [] else min([(self.getMazeDistance(myPos, caps), caps) for caps in capss])
     foods = self.getFood(gameState).asList()
-    dist_food, closest_food = min([(self.getMazeDistance(myPos, food), food) for food in foods])
-
-    if myState.numCarrying != 0:
-      if dist_food <= 2: return self.decideMove(gameState, actions, closest_food)
-      else: return self.decideMove(gameState, actions, self.start)
+    # dist_food, closest_food = 0, None if foods == [] else min([(self.getMazeDistance(myPos, food), food) for food in foods])
 
 
     opponents = self.getOpponents(gameState)
     oppStates = [gameState.getAgentState(opponent) for opponent in opponents]
     oppPoses = [(state, state.getPosition()) for state in oppStates]
-    visibleOpponents = [(self.getMazeDistance(myPos, pos), pos, state.isPacman) for state, pos in oppPoses if pos != None]
-    d_opp, c_opp, p_opp = (None, None, None) if visibleOpponents == [] else min(visibleOpponents)
+    visibleOpponents = [(self.getMazeDistance(myPos, pos), pos, state.isPacman, state.scaredTimer) for state, pos in oppPoses if pos != None]
+    d_opp, c_opp, p_opp, s_opp = (9999, None, None, None) if visibleOpponents == [] else min(visibleOpponents)
+    print [opp[1] for opp in visibleOpponents if opp[3] == 0]
+    ghosts = [] if visibleOpponents == [] else [opp[1] for opp in visibleOpponents if opp[3] == 0]
+    # print ghosts, visibleOpponents
+    dist_ghosts = [self.getMazeDistance(myPos, ghost) for ghost in ghosts]
+    # print d_opp, c_opp, p_opp
     
+    if capss != [] or ghosts != []: (dist_food, closest_food) = self.chooseTarget(myPos, capss, ghosts)
+    elif foods != []: (dist_food, closest_food) = self.chooseTarget(myPos, foods, ghosts)
+    else: return self.decideMove(gameState, actions, self.start)
+
+    # print dist_food, closest_food
+
+    if myState.numCarrying != 0 and [dist for dist in dist_ghosts if dist < 10] != []:
+      # if dist_food < d_opp: return self.decideMove(gameState, actions, closest_food)
+      return self.decideMove(gameState, actions, self.start)
+
     # evade ghost if required
-    if c_opp != None:
-      if not p_opp:
-        return self.decideMove(gameState, actions, c_opp, False)
-      elif p_opp and not myState.isPacman: # try to get nearest pacman
-        return self.decideMove(gameState, actions, c_opp)
+    if dist_ghosts != [] and d_opp <= 5:
+      return self.decideMove(gameState, actions, ghosts[0], False)
+      # elif p_opp and not myState.isPacman: # try to get nearest pacman
+      #   return self.decideMove(gameState, actions, c_opp)
 
     return self.decideMove(gameState, actions, closest_food)
 
+
+  def chooseTarget(self, myPos, targets, ghosts):
+    if ghosts == []: 
+      return (0, None) if targets == [] else min([(self.getMazeDistance(myPos, target), target) for target in targets])
+    arrangedTargets = []
+    for target in targets:
+      weightedDistance = self.getMazeDistance(myPos, target)
+      for ghost in ghosts:
+        weightedDistance -= self.getMazeDistance(ghost, target) - self.getMazeDistance(myPos, ghost)
+      arrangedTargets.append((weightedDistance, target))
+    return (0, None) if arrangedTargets == [] else min(arrangedTargets)
 
   def decideMove(self, gameState, actions, target, approach=True):
     suitableMove = None
@@ -254,9 +278,10 @@ class DefAgent(CaptureAgent):
         if ((len(invaders)==1) and (disToCloestInvader > 5) and (a.getPosition() != None for a in invaders)):
           invaderLoc = invaders[0].getPosition()
           foods = self.getFoodYouAreDefending(gameState).asList()
-          invaderToFood, targetLoc = min([(self.getMazeDistance(invaderLoc, foodLoc), foodLoc) for foodLoc in foods])
-          disToInvaderTarget = self.getMazeDistance(targetLoc, myPos)
-          features['targetDistance'] = disToInvaderTarget
+          if foods != []:
+            invaderToFood, targetLoc = min([(self.getMazeDistance(invaderLoc, foodLoc), foodLoc) for foodLoc in foods])
+            disToInvaderTarget = self.getMazeDistance(targetLoc, myPos)
+            features['targetDistance'] = disToInvaderTarget
     else:
       walls = gameState.getWalls()
       disToMiddle = self.getMazeDistance(myPos, (walls.width/2,walls.height/2))
