@@ -116,11 +116,16 @@ class OffAgent(CaptureAgent):
     self.prevactions = self.prevactions if len(self.prevactions)<7 else self.prevactions[:6]
 
     if (len(self.prevactions)>5 and self.prevactions[0]==self.prevactions[2] and self.prevactions[0]==self.prevactions[4] and self.prevactions[1]==self.prevactions[3] and self.prevactions[1]==self.prevactions[5] and self.prevactions[0]!=self.prevactions[1] and score<=0):
-      print("random~~")
+      #print("random~~")
       actions.remove(self.prevactions[0])
       actions.remove('Stop')
       self.randomcounter = 4
-      self.lastRandom = random.choice(actions)
+      if len(actions)>=2:
+        if self.prevactions[0] in actions:
+          actions.remove(self.prevactions[0])
+        self.lastRandom = random.choice(actions)    # bug!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+      else:
+        self.lastRandom = self.prevactions[0]
       return self.lastRandom
     if self.randomcounter != 5 and self.randomcounter!=0:
       if self.lastRandom in actions:
@@ -590,7 +595,7 @@ class FlowNetwork(object):
                 if self.FindPath(source, edge.target) is None:
                     bottlenecks.append(edge.source)
                     break
-        assert len(bottlenecks) == maxflow
+        #assert len(bottlenecks) == maxflow
         return bottlenecks
 
     def MaxFlow(self, source, target):
