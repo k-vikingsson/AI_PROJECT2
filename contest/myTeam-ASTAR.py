@@ -110,7 +110,7 @@ class AStarAgent(CaptureAgent):
 
     opponents = self.getOpponents(gameState)
     oppStates = [gameState.getAgentState(opp) for opp in opponents]
-    ghosts = [(oppState.getPosition()) for oppState in oppStates if oppState.getPosition() != None and oppState.scaredTimer < 3 and not oppState.isPacman]
+    ghosts = [(oppState.getPosition()) for oppState in oppStates if oppState.getPosition() != None and oppState.scaredTimer < 5 and not oppState.isPacman]
 
     distsToFood = [self.getMazeDistance(food, myPos) for food in foods]
     distToFood = min(distsToFood)
