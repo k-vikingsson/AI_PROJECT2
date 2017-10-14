@@ -1,5 +1,6 @@
 contest/*
 !contest/myTeam.py
-!contest/myTeam-bak.py
+!contest/myTeam-MonteCarlo.py
+!contest/myTeam-ASTAR.py
 *.sublime*
 *.pyc
