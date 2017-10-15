@@ -24,7 +24,7 @@ import collections
 #################
 
 def createTeam(firstIndex, secondIndex, isRed,
-               first = 'AStarAgent', second = 'DefAgent'):
+               first = 'OffTopAgent', second = 'OffBotAgent'):
   """
   This function should return a list of two agents that will form the
   team, initialized using firstIndex and secondIndex as their agent
@@ -110,19 +110,12 @@ class AStarAgent(CaptureAgent):
 
     opponents = self.getOpponents(gameState)
     oppStates = [gameState.getAgentState(opp) for opp in opponents]
-    ghosts = [(oppState.getPosition()) for oppState in oppStates if oppState.getPosition() != None and oppState.scaredTimer < 3 and not oppState.isPacman]
+    ghosts = [(oppState.getPosition()) for oppState in oppStates if oppState.getPosition() != None and oppState.scaredTimer < 5 and not oppState.isPacman]
     scared = min([oppState.scaredTimer for oppState in oppStates])
-    for opp in opponents:
-      if gameState.getAgentState(opp).scaredTimer != 0: self.toAvoid[opp] = []
-      else:
-        avoiding = self.toAvoid.get(opp, [])
-        distsToAvoid = [self.manhattanDistance(avoid, myPos) for avoid in list(set(avoiding))]
-        if distsToAvoid != [] and min(distsToAvoid) > 20: self.toAvoid[opp] = []
-
 
     distsToFood = [self.getMazeDistance(food, myPos) for food in foods]
     distToFood = min(distsToFood)
-    if gameState.data.timeleft/4 <= (len(pathToHome) + 1) and myState.numCarrying != 0:
+    if gameState.data.timeleft/4 <= (len(pathToHome) + 2) and myState.numCarrying != 0:
       if pathToHome != []: return pathToHome[0]
 
     if self.stepsNoProgress >= myState.numCarrying and ghosts != []:
@@ -138,7 +131,29 @@ class AStarAgent(CaptureAgent):
 
     path = self.aStarSearch(gameState, targets)
     if path != []: return path[0]
-    else: return random.choice(all_actions) 
+
+    
+    actions = []
+    for a in all_actions:
+      if not self.takeToEmptyAlley(gameState, a, 5):
+        actions.append(a)
+    if len(actions) == 0:
+      actions = all_actions
+
+    fvalues = []
+    for a in actions:
+      new_state = gameState.generateSuccessor(self.index, a)
+      value = 0
+      for i in range(1,31):
+        value += self.randomSimulation(20, new_state)
+      fvalues.append(value)
+
+    best = max(fvalues)
+    ties = filter(lambda x: x[0] == best, zip(fvalues, actions))
+    toPlay = random.choice(ties)[1]
+
+    #print 'eval time for offensive agent %d: %.4f' % (self.index, time.time() - start)
+    return toPlay
 
   def getActions(self, gameState):
     actions = gameState.getLegalActions(self.index)
@@ -154,6 +169,173 @@ class AStarAgent(CaptureAgent):
     if self.isGoalState(state): return 0
     currPos, targets, isPac = state
     return max([self.getMazeDistance(currPos, target) for target in targets])
+
+
+
+  def evaluate(self, gameState, action):
+    features = self.getFeatures(gameState, action)
+    weights = self.getWeights(gameState, action)
+    return features * weights
+
+  
+  def getFeatures(self, gameState, action):
+    myState = gameState.getAgentState(self.index)
+    myPos = myState.getPosition()
+    successor = gameState.generateSuccessor(self.index, action)
+    myNextState = successor.getAgentState(self.index)
+    myNextPos = myNextState.getPosition()
+
+    foods = self.getFood(successor).asList()
+    if len(foods)>=3:
+      dist_food, closest_food = min([(self.getMazeDistance(myNextPos, food), food) for food in foods]) 
+    else:
+      dist_food = 0
+
+    if (int(myNextPos[0]),int(myNextPos[1])) in self.getFood(gameState).asList():
+      dist_food = 0 
+    opponents = self.getOpponents(successor)
+    oppStates = [successor.getAgentState(opponent) for opponent in opponents]
+    oppPoses = [(state, state.getPosition()) for state in oppStates]
+    visibleOpponents = [(self.getMazeDistance(myNextPos, pos), pos, state.isPacman) for state, pos in oppPoses if pos != None]
+    d_opp, c_opp, p_opp = (999, None, None) if visibleOpponents == [] else min(visibleOpponents)
+
+    walls = gameState.getWalls()
+    midRange = []
+    for i in range(1,walls.height):
+      widthNum = walls.width/2-1 if self.red else walls.width/2
+      if not gameState.hasWall(widthNum,i):
+        midRange+=[(widthNum,i)]
+
+
+    features = util.Counter()
+    
+    capsulesPos = gameState.getBlueCapsules() if gameState.isOnRedTeam(self.index) else gameState.getRedCapsules()
+    if (len(capsulesPos) > 0) and (d_opp!=0) and (d_opp<8) :
+      dis_cap = min([self.getMazeDistance(myNextPos, cap) for cap in capsulesPos])
+      features['distToCap'] = dis_cap if dis_cap<d_opp else 0
+    else:
+      features['distToCap'] = 0
+
+    features['distToGhost'] = 0 if  p_opp else d_opp
+
+
+
+    if len(gameState.getLegalActions(self.index)) == 2 and (d_opp<=10 and d_opp!=0): deadend = 1
+    else: deadend = 0
+
+  
+    
+    features['distToFood'] = dist_food
+    features['distToHome'] = min(self.getMazeDistance(myNextPos, mid) for mid in midRange)
+    features['foodLeft'] = len(foods)
+    features['gameScore'] = self.getScore(successor)
+    features['deadend'] = deadend * (d_opp + 1)
+    features['numCarrying'] = myNextState.numCarrying
+    features['backhome'] = features['distToHome'] if (d_opp<=3) else 0
+
+    otherTeamIndex = gameState.getBlueTeamIndices() if gameState.isOnRedTeam(self.index) else gameState.getRedTeamIndices()
+    closestGIndex = otherTeamIndex[0]
+    if visibleOpponents!=[]:
+      closestGDist , closestGIndex = min([(self.getMazeDistance(gameState.getAgentState(j).getPosition(),myNextPos),j) for j in otherTeamIndex if gameState.getAgentState(j).getPosition()!=None])
+
+    if self.isScared(gameState, closestGIndex):
+      capTimeLeft = gameState.getAgentState(closestGIndex).scaredTimer
+      features['distToCap'] = 0
+      features['distToGhost'] = 0 
+      if capsulesPos>5:
+        features['backhome'] = 0
+      if capTimeLeft<=3 and not p_opp:
+        features['distToGhost'] = d_opp
+
+
+
+    if (features['distToGhost']>=3):
+      features['distToGhost'] = 0 
+
+    #features['tooMuchFood'] = features['numCarrying']*features["distToHome"]*features["distToHome"]
+    #features['distToFood'] = dist_food/(features['numCarrying']-10) if (features['numCarrying']>10) else dist_food
+
+    if gameState.data.timeleft/4 <= features['distToHome']+2:
+      features['backhome'] = features["distToHome"]*1.5
+      features['distToFood'] = 0
+
+    if (features['numCarrying']>1 and features['distToHome']<2) or (features['numCarrying']>3 and features['distToHome']<3) or (features['numCarrying']>5 and features['distToHome']<4) or (features['numCarrying']>8 and features['distToHome']<10)or (features['numCarrying']>12 and features['distToHome']<20):
+      features['distToFood'] = 0
+
+    return features
+
+
+  def getWeights(self, gameState, action):
+    weights = util.Counter()
+
+    weights['distToGhost'] = 1050
+    weights['distToFood'] = -60
+    weights['distToCap'] = -1010
+    weights['distToHome'] = -10
+    weights['numCarrying'] = -10
+    weights['foodLeft'] = -700
+    weights['gameScore'] = 5000
+    weights['deadend'] = -800
+    weights['backhome'] = -1000
+    #weights['tooMuchFood'] = -1
+
+    return weights
+  def isScared(self, gameState, index):
+    """
+    Says whether or not the given agent is scared
+    """
+    isScared = bool(gameState.data.agentStates[index].scaredTimer)
+    return isScared
+
+  def randomSimulation(self, depth, gameState):
+    """
+    Random simulate some actions for the agent. The actions other agents can take
+    are ignored, or, in other words, we consider their actions is always STOP.
+    The final state from the simulation is evaluated.
+    """
+    new_state = gameState.deepCopy()
+    while depth > 0:
+      # Get valid actions
+      actions = new_state.getLegalActions(self.index)
+      # The agent should not stay put in the simulation
+      actions.remove(Directions.STOP)
+      current_direction = new_state.getAgentState(self.index).configuration.direction
+      # The agent should not use the reverse direction during simulation
+      reversed_direction = Directions.REVERSE[new_state.getAgentState(self.index).configuration.direction]
+      if reversed_direction in actions and len(actions) > 1:
+        actions.remove(reversed_direction)
+      # Randomly chooses a valid action
+      a = random.choice(actions)
+      # Compute new state and update depth
+      new_state = new_state.generateSuccessor(self.index, a)
+      depth -= 1
+    # Evaluate the final simulation state
+    return self.evaluate(new_state, Directions.STOP)
+
+  def takeToEmptyAlley(self, gameState, action, depth):
+    """
+    Verify if an action takes the agent to an alley with
+    no pacdots.
+    """
+    if depth == 0:
+      return False
+    old_score = self.getScore(gameState)
+    new_state = gameState.generateSuccessor(self.index, action)
+    new_score = self.getScore(new_state)
+    if old_score < new_score:
+      return False
+    actions   = new_state.getLegalActions(self.index)
+    actions.remove(Directions.STOP)
+    reversed_direction = Directions.REVERSE[new_state.getAgentState(self.index).configuration.direction]
+    if reversed_direction in actions:
+      actions.remove(reversed_direction)
+    if len(actions) == 0:
+      return True
+    for a in actions:
+      if not self.takeToEmptyAlley(new_state, a, depth - 1):
+        return False
+    return True
+
 
   def aStarSearch(self, gameState, targets):
     
@@ -214,9 +396,6 @@ class AStarAgent(CaptureAgent):
       successors.append((action, succState))
     return successors
 
-  def manhattanDistance(self, xy1, xy2 ):
-    "Returns the Manhattan distance between points xy1 and xy2"
-    return abs( xy1[0] - xy2[0] ) + abs( xy1[1] - xy2[1] )
 
   def locationsToAvoid(self, gameState):
     opponents = self.getOpponents(gameState)
@@ -251,81 +430,154 @@ class OffTopAgent(AStarAgent):
 
 
   def chooseAction(self, gameState):
-    """
-    Picks among actions randomly.
-    """
-    # actions = gameState.getLegalActions(self.index)
-    # actions.remove('Stop')
-    
 
-    # return max([(self.evaluate(gameState, act), act) for act in actions])[1]
+
     all_foods = self.getFood(gameState).asList() + self.getCapsules(gameState)
     foods = [food for food in all_foods if food[1] > self.mapHeight/2]
     foods = foods if foods != [] else all_foods
 
     myState = gameState.getAgentState(self.index)
     myPos = myState.getPosition()
+    pathToHome = self.aStarSearch(gameState, [self.start])
+    all_actions = gameState.getLegalActions(self.index)
+    all_actions.remove(Directions.STOP)
+
     self.attacking = len(all_foods) > 2
     if self.attacking: targets = foods
     else: targets = [self.start]
 
+    if len(foods) == self.lastFoodsLeft and myState.numCarrying != 0 and myState.isPacman:
+      self.stepsNoProgress += 1
+    else:
+      self.stepsNoProgress = 0
+      self.lastFoodsLeft = len(foods)
+
     opponents = self.getOpponents(gameState)
-    ghosts = [(gameState.getAgentState(opp).getPosition()) for opp in opponents if gameState.getAgentState(opp).getPosition() != None and gameState.getAgentState(opp).scaredTimer < 4]
+    oppStates = [gameState.getAgentState(opp) for opp in opponents]
+    ghosts = [(oppState.getPosition()) for oppState in oppStates if oppState.getPosition() != None and oppState.scaredTimer < 5 and not oppState.isPacman]
+    scared = min([oppState.scaredTimer for oppState in oppStates])
 
-    if ghosts != [] and [self.getMazeDistance(ghost, myPos) for ghost in ghosts if self.getMazeDistance(ghost, myPos) < 6]:
-      # capss = self.getCapsules(gameState)
-      # if capss != []: targets = capss
-      if myState.numCarrying != 0: targets = [self.start]
+    distsToFood = [self.getMazeDistance(food, myPos) for food in foods]
+    distToFood = min(distsToFood)
+    if gameState.data.timeleft/4 <= (len(pathToHome) + 2) and myState.numCarrying != 0:
+      if pathToHome != []: return pathToHome[0]
 
-    if targets != [self.start]: path = self.aStarSearch(gameState, targets)
-    else: path = self.aStarSearch(gameState, targets)
-    if path == []: path = self.aStarSearch(gameState, [self.start])
-    if path == []:
-      actions = gameState.getLegalActions(self.index)
-      return random.choice(actions)
+    if self.stepsNoProgress >= myState.numCarrying and ghosts != []:
+      if [ghost for ghost in ghosts if min([self.getMazeDistance(ghost, myPos) for ghost in ghosts]) < distToFood] != []:
+        targets = [self.start]
+    elif self.stepsNoProgress >= max(distsToFood) and myState.numCarrying != 0 and pathToHome != []: return pathToHome[0]
+    elif myState.numCarrying != 0 and scared < len(pathToHome)-1 and scared != 0: return pathToHome[0]
+      
+    if ghosts != []:
+      capss = self.getCapsules(gameState)
+      if capss != [] and self.aStarSearch(gameState, capss) != []: targets = capss
+      elif myState.numCarrying != 0: targets = [self.start]
 
-    return path[0]
+    path = self.aStarSearch(gameState, targets)
+    if path != []: return path[0]
+
+    
+    actions = []
+    for a in all_actions:
+      if not self.takeToEmptyAlley(gameState, a, 5):
+        actions.append(a)
+    if len(actions) == 0:
+      actions = all_actions
+
+    fvalues = []
+    for a in actions:
+      new_state = gameState.generateSuccessor(self.index, a)
+      value = 0
+      for i in range(1,31):
+        value += self.randomSimulation(20, new_state)
+      fvalues.append(value)
+
+    best = max(fvalues)
+    ties = filter(lambda x: x[0] == best, zip(fvalues, actions))
+    toPlay = random.choice(ties)[1]
+
+    #print 'eval time for offensive agent %d: %.4f' % (self.index, time.time() - start)
+    return toPlay
 
 
 class OffBotAgent(AStarAgent):
 
   def chooseAction(self, gameState):
-    """
-    Picks among actions randomly.
-    """
-    # actions = gameState.getLegalActions(self.index)
-    # actions.remove('Stop')
-    
 
-    # return max([(self.evaluate(gameState, act), act) for act in actions])[1]
+
     all_foods = self.getFood(gameState).asList() + self.getCapsules(gameState)
     foods = [food for food in all_foods if food[1] < self.mapHeight/2]
     foods = foods if foods != [] else all_foods
 
     myState = gameState.getAgentState(self.index)
     myPos = myState.getPosition()
+    pathToHome = self.aStarSearch(gameState, [self.start])
+    all_actions = gameState.getLegalActions(self.index)
+    all_actions.remove(Directions.STOP)
+
     self.attacking = len(all_foods) > 2
     if self.attacking: targets = foods
     else: targets = [self.start]
 
+    if len(foods) == self.lastFoodsLeft and myState.numCarrying != 0 and myState.isPacman:
+      self.stepsNoProgress += 1
+    else:
+      self.stepsNoProgress = 0
+      self.lastFoodsLeft = len(foods)
+
     opponents = self.getOpponents(gameState)
-    ghosts = [(gameState.getAgentState(opp).getPosition()) for opp in opponents if gameState.getAgentState(opp).getPosition() != None and gameState.getAgentState(opp).scaredTimer < 4]
+    oppStates = [gameState.getAgentState(opp) for opp in opponents]
+    ghosts = [(oppState.getPosition()) for oppState in oppStates if oppState.getPosition() != None and oppState.scaredTimer < 5 and not oppState.isPacman]
+    scared = min([oppState.scaredTimer for oppState in oppStates])
+    for opp in opponents:
+      if gameState.getAgentState(opp).isPacman: self.toAvoid[opp] = []
 
-    if ghosts != [] and [self.getMazeDistance(ghost, myPos) for ghost in ghosts if self.getMazeDistance(ghost, myPos) < 6]:
-      # capss = self.getCapsules(gameState)
-      # if capss != []: targets = capss
-      if myState.numCarrying != 0: targets = [self.start]
+    for avoid in self.toAvoid.values():
+      print avoid
+    print ''
 
-    if targets != [self.start]: path = self.aStarSearch(gameState, targets)
-    else: path = self.aStarSearch(gameState, targets)
-    if path == []: path = self.aStarSearch(gameState, [self.start])
-    if path == []:
-      actions = gameState.getLegalActions(self.index)
-      return random.choice(actions)
+    distsToFood = [self.getMazeDistance(food, myPos) for food in foods]
+    distToFood = min(distsToFood)
+    if gameState.data.timeleft/4 <= (len(pathToHome) + 2) and myState.numCarrying != 0:
+      if pathToHome != []: return pathToHome[0]
 
-    return path[0]
+    if self.stepsNoProgress >= myState.numCarrying and ghosts != []:
+      if [ghost for ghost in ghosts if min([self.getMazeDistance(ghost, myPos) for ghost in ghosts]) < distToFood] != []:
+        targets = [self.start]
+    elif self.stepsNoProgress >= max(distsToFood) and myState.numCarrying != 0 and pathToHome != []: return pathToHome[0]
+    elif myState.numCarrying != 0 and scared < len(pathToHome)-1 and scared != 0: return pathToHome[0]
+      
+    if ghosts != []:
+      capss = self.getCapsules(gameState)
+      if capss != [] and self.aStarSearch(gameState, capss) != []: targets = capss
+      elif myState.numCarrying != 0: targets = [self.start]
 
+    path = self.aStarSearch(gameState, targets)
+    if path != []: return path[0]
 
+    
+    actions = []
+    for a in all_actions:
+      if not self.takeToEmptyAlley(gameState, a, 5):
+        actions.append(a)
+    if len(actions) == 0:
+      actions = all_actions
+
+    fvalues = []
+    for a in actions:
+      new_state = gameState.generateSuccessor(self.index, a)
+      value = 0
+      for i in range(1,31):
+        value += self.randomSimulation(20, new_state)
+      fvalues.append(value)
+
+    best = max(fvalues)
+    ties = filter(lambda x: x[0] == best, zip(fvalues, actions))
+    toPlay = random.choice(ties)[1]
+
+    #print 'eval time for offensive agent %d: %.4f' % (self.index, time.time() - start)
+    return toPlay
+  
 
 class DefAgent(CaptureAgent):
 
@@ -439,13 +691,6 @@ class DefAgent(CaptureAgent):
         dists = [self.getMazeDistance(myPos, a.getPosition()) for a in invaders]
         disToCloestInvader = min(dists)
         features['targetDistance'] = disToCloestInvader
-        #game reconition techniques;
-        #if ((len(invaders)==1) and (disToCloestInvader > 15) and (a.getPosition() != None for a in invaders)):
-        #  invaderLoc = invaders[0].getPosition()
-        #  foods = self.getFoodYouAreDefending(gameState).asList()
-        #  invaderToFood, targetLoc = min([(self.getMazeDistance(invaderLoc, foodLoc), foodLoc) for foodLoc in foods])
-        #  disToInvaderTarget = self.getMazeDistance(targetLoc, myPos)
-        #  features['targetDistance'] = disToInvaderTarget
         
         if self.isScared(gameState, self.index):
           if disToCloestInvader >3:
@@ -474,21 +719,6 @@ class DefAgent(CaptureAgent):
         distsToB = [self.getMazeDistance(myPos, self.bottleNecks)]
         disToCloestB = min(distsToB)
         features['targetDistance'] = disToCloestB
-    """else:
-        walls = gameState.getWalls()
-        midPoint = (walls.width/2, walls.height/2)
-        midPoints = [(midPoint[0],midPoint[1]+2),(midPoint[0],midPoint[1]+1),(midPoint[0],midPoint[1]-1),(midPoint[0]-1,midPoint[1]),midPoint]
-        hasWall = False
-        target = (walls.width/2, walls.height/2)
-        for midpoint in midPoints:
-            if not (gameState.hasWall(midpoint[0],midpoint[1])):
-                notWall = True
-                target = midpoint
-        if notWall:
-            disToMiddle = self.getMazeDistance(target, myPos)
-        else:
-             disToMiddle = self.getManhattanDistance(target, myPos)
-        features['targetDistance'] = disToMiddle"""
 
     if action == Directions.STOP: features['stop'] = 1
     rev = Directions.REVERSE[gameState.getAgentState(self.index).configuration.direction]

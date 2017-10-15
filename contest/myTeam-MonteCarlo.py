@@ -268,12 +268,35 @@ class OffAgent(CaptureAgent):
     return toPlay
 
 
+
 class DefAgent(CaptureAgent):
 
   def registerInitialState(self, gameState):
+    """
+    This method handles the initial setup of the
+    agent to populate useful fields (such as what team
+    we're on).
+
+    A distanceCalculator instance caches the maze distances
+    between each pair of positions, so your agents can use:
+    self.distancer.getDistance(p1, p2)
+
+    IMPORTANT: This method may run for at most 15 seconds.
+    """
+
+    '''
+    Make sure you do not delete the following line. If you would like to
+    use Manhattan distances instead of maze distances in order to save
+    on initialization time, please take a look at
+    CaptureAgent.registerInitialState in captureAgents.py.
+    '''
     self.start = gameState.getAgentPosition(self.index)
     CaptureAgent.registerInitialState(self, gameState)
     self.bottleNecks, self.numDots = self.findBottleneckWithMostPacdots(gameState)
+
+    '''
+    Your initialization code goes here, if you need any.
+    '''
 
 
   def chooseAction(self, gameState):
@@ -338,29 +361,62 @@ class DefAgent(CaptureAgent):
     features['onDefense'] = 1
     if myState.isPacman: features['onDefense'] = 0
 
+    otherTeamIndex = gameState.getBlueTeamIndices() if gameState.isOnRedTeam(self.index) else gameState.getRedTeamIndices()
+    enemies = [gameState.getAgentState(i) for i in otherTeamIndex]
     # Computes distance to invaders we can see
-    enemies = [successor.getAgentState(i) for i in self.getOpponents(successor)] 
+    #enemies = [successor.getAgentState(i) for i in self.getOpponents(successor)] 
     invaders = [a for a in enemies if a.isPacman and a.getPosition() != None]
+    numInvaders = len([a for a in enemies if a.isPacman])
     features['numInvaders'] = len(invaders)
+    ourCapsulesPos = gameState.getRedCapsules() if gameState.isOnRedTeam(self.index) else gameState.getBlueCapsules()
 
-    
-
+    walls = gameState.getWalls()
+    midRange = []
+    for i in range(1,walls.height):
+      widthNum = walls.width/2-1 if self.red else walls.width/2
+      if not gameState.hasWall(widthNum,i):
+        midRange+=[(widthNum,i)]
+    #print gameState.getAgentDistances()
     if len(invaders) > 0: 
         dists = [self.getMazeDistance(myPos, a.getPosition()) for a in invaders]
         disToCloestInvader = min(dists)
         features['targetDistance'] = disToCloestInvader
         #game reconition techniques;
-        if ((len(invaders)==1) and (disToCloestInvader > 5) and (a.getPosition() != None for a in invaders)):
-          invaderLoc = invaders[0].getPosition()
-          foods = self.getFoodYouAreDefending(gameState).asList()
-          invaderToFood, targetLoc = min([(self.getMazeDistance(invaderLoc, foodLoc), foodLoc) for foodLoc in foods])
-          disToInvaderTarget = self.getMazeDistance(targetLoc, myPos)
-          features['targetDistance'] = disToInvaderTarget
-    elif(self.getPreviousObservation()!=None) and not self.isScared(gameState, self.index):
+        #if ((len(invaders)==1) and (disToCloestInvader > 15) and (a.getPosition() != None for a in invaders)):
+        #  invaderLoc = invaders[0].getPosition()
+        #  foods = self.getFoodYouAreDefending(gameState).asList()
+        #  invaderToFood, targetLoc = min([(self.getMazeDistance(invaderLoc, foodLoc), foodLoc) for foodLoc in foods])
+        #  disToInvaderTarget = self.getMazeDistance(targetLoc, myPos)
+        #  features['targetDistance'] = disToInvaderTarget
+        
+        if self.isScared(gameState, self.index):
+          if disToCloestInvader >3:
+            features['targetDistance'] = disToCloestInvader
+          else:
+            features['targetDistance'] = -disToCloestInvader
+        elif(disToCloestInvader<20):
+          features['targetDistance'] = disToCloestInvader
+    elif(numInvaders!=0 and len(ourCapsulesPos)==1):
+      disToOurCap = min([self.getMazeDistance(myPos, capPos) for capPos in ourCapsulesPos])
+      features['targetDistance'] = disToOurCap
+    elif(self.isScared(gameState, otherTeamIndex[0]) or self.isScared(gameState, otherTeamIndex[1])):
+        invTimeLeft = max([gameState.getAgentState(index).scaredTimer for index in otherTeamIndex])
+        disComeBack = min(self.getMazeDistance(myPos, mid) for mid in midRange)
+        features['onDefense'] = 0
+        if (invTimeLeft-2 >  disComeBack) :
+            foods = self.getFood(gameState).asList()
+            if len(foods)>=3:
+              distToFood, closest_food = min([(self.getMazeDistance(myPos, food), food) for food in foods]) 
+            else:
+              dist_food = 0
+            features['targetDistance'] = distToFood
+        else:
+            features['targetDistance'] = disComeBack
+    else:
         distsToB = [self.getMazeDistance(myPos, self.bottleNecks)]
         disToCloestB = min(distsToB)
         features['targetDistance'] = disToCloestB
-    else:
+    """else:
         walls = gameState.getWalls()
         midPoint = (walls.width/2, walls.height/2)
         midPoints = [(midPoint[0],midPoint[1]+2),(midPoint[0],midPoint[1]+1),(midPoint[0],midPoint[1]-1),(midPoint[0]-1,midPoint[1]),midPoint]
@@ -374,18 +430,17 @@ class DefAgent(CaptureAgent):
             disToMiddle = self.getMazeDistance(target, myPos)
         else:
              disToMiddle = self.getManhattanDistance(target, myPos)
-        features['targetDistance'] = disToMiddle
+        features['targetDistance'] = disToMiddle"""
 
     if action == Directions.STOP: features['stop'] = 1
     rev = Directions.REVERSE[gameState.getAgentState(self.index).configuration.direction]
     if action == rev: features['reverse'] = 1
-
     return features
 
   def getWeights(self, gameState, action):
 
     if self.isScared(gameState, self.index):
-      return {'numInvaders': -1000, 'onDefense': 100, 'targetDistance': -0.2*gameState.getAgentState(self.index).scaredTimer, 'stop': -10, 'reverse': -1}
+      return {'numInvaders': -1000, 'onDefense': 100, 'targetDistance': -0.2*(gameState.getAgentState(self.index).scaredTimer), 'stop': -10, 'reverse': -1}
 
     return {'numInvaders': -1000, 'onDefense': 100, 'targetDistance': -20, 'stop': -100, 'reverse': -2}
 
@@ -566,7 +621,7 @@ class FlowNetwork(object):
                 if self.FindPath(source, edge.target) is None:
                     bottlenecks.append(edge.source)
                     break
-        assert len(bottlenecks) == maxflow
+        #assert len(bottlenecks) == maxflow
         return bottlenecks
 
     def MaxFlow(self, source, target):
